@@ -1,7 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { AuthContext } from '../../contexts/auth';
-import firebase from '../../services/firebaseConnection';
+import connection from '../../services/sqlConnection';
 import { format } from 'date-fns';
 
 import { Container, SearchForm, LoadWrapper, RoadMList, Roadmap, RoadmapContent, RoadmapFooter, RoadmapForm, PlusIcon, MapsOffIcon, CloseIcon, TrashIcon } from './styles';
@@ -44,89 +44,86 @@ function Roadmaps() {
 
    useEffect(() => {
       loadRoadmaps();
-
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, []);
 
-
    async function loadRoadmaps() {
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps').orderBy('created', 'desc')
-      .get()
-      .then((snapshot) => {
-         let list = [];
+      connection.query(
+         'SELECT * FROM Roteiro WHERE Usuario_idUsuario = ? ORDER BY created DESC',
+         [user.uid],
+         (err, results) => {
+            if (err) {
+               console.error('Erro ao carregar roteiros:', err);
+               setLoading(false);
+               return;
+            }
 
-         snapshot.forEach((doc) => {
-            list.push({
-               id: doc.id,
-               title: doc.data().title,
-               desc: doc.data().desc,
-               created: doc.data().created,
-               createdFormated: format(doc.data().created.toDate(), 'dd/MM/yyyy'),
-            })
-         });
+            const list = results.map((roadmap) => ({
+               id: roadmap.id,
+               title: roadmap.title,
+               desc: roadmap.desc,
+               created: roadmap.created,
+               createdFormated: format(new Date(roadmap.created), 'dd/MM/yyyy'),
+            }));
 
-         setRoadmaps(list);
-      })
-      .catch((err) => {
-         console.log(err);
-      })
-
-      setLoading(false);
+            setRoadmaps(list);
+            setLoading(false);
+         }
+      );
    }
 
 
    async function handleAddRoadmap(e) {
       e.preventDefault();
       
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps')
-      .add({
-         title: title.trim(),
-         desc: desc.trim(),
-         created: new Date(),
-      })
-      .then(() => {
-         toast('Roteiro criado.', {
-            position: "bottom-right",
-            autoClose: 1500,
-            hideProgressBar: true,
-            pauseOnHover: true,
-            className: 'toast-success',
-         });
-      })
-      .catch((err) => {
-         console.log(err);
-      })
-      
-      setModalRoadmap(false);
-      setTitle('');
-      setDesc('');
-      
-      loadRoadmaps();
+      connection.query(
+         'INSERT INTO Roteiro (Usuario_idUsuario, Titulo, Descricao, DataCriacao) VALUES (?, ?, ?, ?)',
+         [user.uid, title.trim(), desc.trim(), new Date()],
+         (err) => {
+            if (err) {
+               console.error('Erro ao adicionar roteiro:', err);
+               return;
+            }
+
+            toast('Roteiro criado.', {
+               position: "bottom-right",
+               autoClose: 1500,
+               hideProgressBar: true,
+               pauseOnHover: true,
+               className: 'toast-success',
+            });
+
+            setModalRoadmap(false);
+            setTitle('');
+            setDesc('');
+            loadRoadmaps();
+         }
+      );
    }
 
 
    async function handleDeleteRoadap(id) {
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps').doc(id)
-      .delete()
-      .then(() => {
-         toast('Roteiro excluído.', {
-            position: "bottom-right",
-            autoClose: 1500,
-            hideProgressBar: true,
-            pauseOnHover: true,
-            className: 'toast-fail',
-         });
-      })
-      .catch((err) => {
-         console.log(err);
-      })
+      connection.query(
+         'DELETE FROM Roteiro WHERE IdRoteiro = ? AND Usuario_idUsuario = ?',
+         [id, user.uid],
+         (err) => {
+            if (err) {
+               console.error('Erro ao excluir roteiro:', err);
+               return;
+            }
 
-      loadRoadmaps();
-	};
+            toast('Roteiro excluído.', {
+               position: "bottom-right",
+               autoClose: 1500,
+               hideProgressBar: true,
+               pauseOnHover: true,
+               className: 'toast-fail',
+            });
 
+            loadRoadmaps();
+         }
+      );
+   }
 
    function handleToggleModalRoadmap(e) {
       e.preventDefault();

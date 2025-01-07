@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { AuthContext } from '../../contexts/auth';
-import firebase from '../../services/firebaseConnection';
+import connection from '../../services/sqlConnection';
 
 import { Container, Content, ProfileForm, User, LabelImage, InfoUser, UpLoadIcon } from './styles';
 import { motion } from 'framer-motion';
@@ -26,10 +26,9 @@ function Profile() {
    const [nameErr, setNameErr] = useState(false);
 
    const err = {
-      from: {y: -10, opacity: 0, delay: 0},
-      to: {y: 0, opacity: 1, transition: { duration: 0}}
-   }
-
+      from: { y: -10, opacity: 0, delay: 0 },
+      to: { y: 0, opacity: 1, transition: { duration: 0 } }
+   };
 
    function handleFile(e) {
       if (e.target.files[0]) {
@@ -38,8 +37,7 @@ function Profile() {
          if (image.type === 'image/jpeg' || image.type === 'image/png') {
             setImageAvatar(image);
             setAvatarUrl(URL.createObjectURL(e.target.files[0]));
-         }
-         else {
+         } else {
             alert('Envie uma imagem do tipo PNG ou JPEG');
             setImageAvatar(null);
             return null;
@@ -51,71 +49,24 @@ function Profile() {
       setLoading(true);
       const currentUid = user.uid;
 
-      const uploadTask = await firebase.storage()
-      .ref(`images/${currentUid}/${imageAvatar.name}`)
-      .put(imageAvatar)
-      .then( async () => {
-         console.log('Foto enviada com sucesso!');
-
-         await firebase.storage().ref(`images/${currentUid}`)
-         .child(imageAvatar.name).getDownloadURL()
-         .then( async (url) => {
-            let urlFoto = url;
-
-            await firebase.firestore().collection('users')
-            .doc(user.uid)
-            .update({
-               avatarUrl: urlFoto,
-               name: name
-            })
-            .then( () => {
-               let data = {
-                  ...user,
-                  avatarUrl: urlFoto,
-                  name: name
-               };
-
-               setUser(data);
-               storageUser(data);
+      const uploadTask = await connection.query(
+         'UPDATE usuario SET Foto = ?, Nome = ? WHERE IdUsuario = ?',
+         [avatarUrl, name, currentUid],
+         (err, results) => {
+            if (err) {
+               console.error('Erro ao atualizar perfil:', err);
                setLoading(false);
+               return;
+            }
 
-               toast('Alterações salvas.', {
-                  position: "bottom-right",
-                  autoClose: 1500,
-                  hideProgressBar: true,
-                  pauseOnHover: true,
-                  className: 'toast-success',
-               });
-            })
-         })
-         .catch((err) => {
-            console.log(err);
-         })
-      })
-   }
-
-   async function handleSave(e) {
-      e.preventDefault();
-      setLoading(true);
-      
-      if (name === '') {
-         setNameErr(true);
-      }
-      else if (imageAvatar === null && name !== '') {
-         await firebase.firestore().collection('users')
-         .doc(user.uid)
-         .update({
-            name: name,
-         })
-         .then(() => {
             let data = {
                ...user,
+               avatarUrl: avatarUrl,
                name: name
             };
 
             setUser(data);
             storageUser(data);
-            setNameErr(false);
             setLoading(false);
 
             toast('Alterações salvas.', {
@@ -125,12 +76,48 @@ function Profile() {
                pauseOnHover: true,
                className: 'toast-success',
             });
-         })
-         .catch((err) => {
-            console.log(err);
-         })
-      }
-      else if (name !== '' && imageAvatar !== null) {
+         }
+      );
+   }
+
+   async function handleSave(e) {
+      e.preventDefault();
+      setLoading(true);
+
+      if (name === '') {
+         setNameErr(true);
+         setLoading(false);
+      } else if (imageAvatar === null && name !== '') {
+         connection.query(
+            'UPDATE usuario SET Nome = ? WHERE IdUsuario = ?',
+            [name, user.uid],
+            (err, results) => {
+               if (err) {
+                  console.error('Erro ao atualizar nome:', err);
+                  setLoading(false);
+                  return;
+               }
+
+               let data = {
+                  ...user,
+                  name: name
+               };
+
+               setUser(data);
+               storageUser(data);
+               setNameErr(false);
+               setLoading(false);
+
+               toast('Alterações salvas.', {
+                  position: "bottom-right",
+                  autoClose: 1500,
+                  hideProgressBar: true,
+                  pauseOnHover: true,
+                  className: 'toast-success',
+               });
+            }
+         );
+      } else if (name !== '' && imageAvatar !== null) {
          handleUpload();
       }
    }

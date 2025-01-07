@@ -1,7 +1,7 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AuthContext } from '../../../contexts/auth';
-import firebase from '../../../services/firebaseConnection';
+import connection from '../../../services/sqlConnection';
 import { format } from 'date-fns';
 
 import { Container, Wrapper, Content, RoadmapWrapper, MapWrapper, Header, Section, TitleOpt, Title, MenuOptions, SpanDot, Options, Desc, Created, TitleEmpty, DescEmpty, PlaceList, Place, HeaderPlace, InfoPlace, TitlePlace, Obs, RoadmapForm, OptionIcon, CloudIcon, LocalIcon, EditIcon, NotesIcon, CloseIcon, TrashIcon, Dot } from './styles';
@@ -12,7 +12,6 @@ import Map from '../../../components/Map';
 import Modal from '../../../components/Modal';
 import Weather from '../../../components/Weather';
 import Button from '../../../components/Button';
-
 
 function Roadmap() {
    const { user } = useContext(AuthContext);
@@ -46,7 +45,6 @@ function Roadmap() {
    useEffect(() => {
       getThisRoadmap();
       loadPlaces();
-
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, []);
 
@@ -87,139 +85,137 @@ function Roadmap() {
    }, [setPlaceIsOpen, menuPlaceRef]);
 
    async function getThisRoadmap() {
-      const roadmap = await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps')
-      .doc(id).get();
+      connection.query(
+         'SELECT * FROM Roteiro WHERE IdRoteiro = ? AND Usuario_idUsuario = ?',
+         [id, user.uid],
+         (err, results) => {
+            if (err) {
+               console.error('Erro ao carregar roteiro:', err);
+               return;
+            }
 
-      let data = {
-         id: id,
-         title: roadmap.data().title,
-         desc: roadmap.data().desc,
-         createdFormated: format(roadmap.data().created.toDate(), 'dd/MM/yyyy')
-      };
+            const roadmap = results[0];
+            let data = {
+               id: id,
+               title: roadmap.title,
+               desc: roadmap.desc,
+               createdFormated: format(new Date(roadmap.created), 'dd/MM/yyyy'),
+            };
 
-      setThisRoadmap(data);
+            setThisRoadmap(data);
+         }
+      );
    }
 
    async function handleEditRoadmap(e) {
       e.preventDefault();
       
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps')
-      .doc(id)
-      .update({
-         title: title.trim(),
-         desc: desc.trim()
-      })
-      .then(() => {
-         let data = {
-            ...thisRoadmap,
-            title: title.trim(),
-            desc: desc.trim()
-         };
+      connection.query(
+         'UPDATE Roteiro SET Titulo = ?, Descricao = ? WHERE IdRoteiro = ? AND Usuario_idUsuario = ?',
+         [title.trim(), desc.trim(), id, user.uid],
+         (err) => {
+            if (err) {
+               console.error('Erro ao editar roteiro:', err);
+               return;
+            }
 
-         setThisRoadmap(data);
-      })
-      .catch((err) => {
-         console.log(err)
-      })
+            let data = {
+               ...thisRoadmap,
+               title: title.trim(),
+               desc: desc.trim(),
+            };
+
+            setThisRoadmap(data);
+         }
+      );
 
       setModalRoadmap(false);
    }
 
    async function loadPlaces() {
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps')
-      .doc(id).collection('places').orderBy('created', 'desc')
-      .get()
-      .then((snapshot) => {
-         let list = [];
+      connection.query(
+         'SELECT * FROM Lugar WHERE Roteiro_idRoteiro = ? AND Usuario_idUsuario = ? ORDER BY created DESC',
+         [id, user.uid],
+         (err, results) => {
+            if (err) {
+               console.error('Erro ao carregar lugares:', err);
+               return;
+            }
 
-         snapshot.forEach((doc) => {
-            list.push({
-               id: doc.id,
-               place: doc.data().place,
-               complement: doc.data().complement,
-               lat: doc.data().lat,
-               lng: doc.data().lng,
-               obs: doc.data().obs,
-               created: doc.data().created,
-            })
-         });
+            const list = results.map((place) => ({
+               id: place.id,
+               place: place.place,
+               complement: place.complement,
+               lat: place.lat,
+               lng: place.lng,
+               obs: place.obs,
+               created: place.created,
+            }));
 
-         setPlaces(list);
-      })
-      .catch((err) => {
-         console.log(err);
-      })
+            setPlaces(list);
+         }
+      );
    }
 
-   async function handleAddPlace(nameplace, complement, lat, lng) {
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps')
-      .doc(id).collection('places')
-      .add({
-         place: nameplace,
-         complement: complement,
-         lat: lat,
-         lng: lng,
-         obs: 'Edite seu lugar de viagem adicionando observações.',
-         created: new Date(),
-      })
-      .then(() => {
-         let place = {
-            place: nameplace,
-            complement: complement,
-            lat: lat,
-            lng: lng,
-         }
+   async function handleAddPlace(nameplace, observations) {
+      connection.query(
+         'INSERT INTO Lugar (Roteiro_idRoteiro, Usuario_idUsuario, NomeLugar, Observacao) VALUES (?, ?, ?, ?)',
+         [id, user.uid, nameplace, observations],
+         (err) => {
+            if (err) {
+               console.error('Erro ao adicionar lugar:', err);
+               return;
+            }
 
-         handleShowInMap(place);
-         console.log('Place saved successfully.');
-      })
-      .catch((err) => {
-         console.log(err);
-      })
-      
+            let place = {
+               place: nameplace,
+               observations: observations,
+            };
+
+            handleShowInMap(place);
+            console.log('Place saved successfully.');
+         }
+      );
+
       loadPlaces();
    }
 
    async function handleDeletePlace(pid) {
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps')
-      .doc(id).collection('places').doc(pid)
-      .delete()
-      .then(() => {
-         thisPlace.lat = null;
-         thisPlace.lng = null
+      connection.query(
+         'DELETE FROM Lugar WHERE IdLugar = ? AND Roteiro_idRoteiro = ? AND Usuario_idUsuario = ?',
+         [pid, id, user.uid],
+         (err) => {
+            if (err) {
+               console.error('Erro ao excluir lugar:', err);
+               return;
+            }
 
-         console.log('Place deleted.');
-      })
-      .catch((err) => {
-         console.log(err);
-      })
+            thisPlace.lat = null;
+            thisPlace.lng = null;
+
+            console.log('Place deleted.');
+         }
+      );
 
       setPlaceIsOpen(false);
       loadPlaces();
-	}
+    }
 
    async function handleEditPlace(e) {
       e.preventDefault();
       
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('roadmaps')
-      .doc(id).collection('places')
-      .doc(thisPlace.id)
-      .update({
-         place: place.trim(),
-         obs: obs.trim()
-      })
-      .then(() => {
-         console.log('Place edited successfully')
-      })
-      .catch((err) => {
-         console.log(err)
-      })
+      connection.query(
+         'UPDATE Lugar SET NomeLugar = ?, Observacao = ? WHERE IdLugar = ? AND Roteiro_idRoteiro = ? AND Usuario_idUsuario = ?',
+         [place.trim(), obs.trim(), thisPlace.id, id, user.uid],
+         (err) => {
+            if (err) {
+               console.error('Erro ao editar lugar:', err);
+               return;
+            }
+
+            console.log('Place edited successfully');
+         }
+      );
 
       setModalPlace(false);
       loadPlaces();

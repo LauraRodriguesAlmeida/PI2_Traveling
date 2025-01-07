@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../../contexts/auth';
-import firebase from '../../services/firebaseConnection';
+import connection from '../../services/sqlConnection';
 import { format } from 'date-fns';
 
 import { Container, SearchForm, LoadWrapper, NoteList, Note, NoteContent, NoteFooter, NoteForm, PlusIcon, NotesOffIcon, CloseIcon, EditIcon, TrashIcon } from './styles';
@@ -42,120 +42,117 @@ function Notes() {
       from: {opacity: 0 },
       to: {opacity: 1, transition: {duration: .05}}
    };
-   
+
    useEffect(() => {
       loadNotes();
-
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, []);
 
 
    async function loadNotes() {
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('notes').orderBy('created', 'desc')
-      .get()
-      .then((snapshot) => {
-         let list = [];
+      connection.query(
+         'SELECT * FROM anotacao WHERE Usuario_idUsuario = ? ORDER BY created DESC',
+         [user.uid],
+         (err, results) => {
+            if (err) {
+               console.error('Erro ao carregar notas:', err);
+               setLoading(false);
+               return;
+            }
 
-         snapshot.forEach((doc) => {
-            list.push({
-               id: doc.id,
-               title: doc.data().title,
-               text: doc.data().text,
-               created: doc.data().created,
-               createdFormated: format(doc.data().created.toDate(), 'dd/MM/yyyy'),
-            })
-         });
+            const list = results.map((note) => ({
+               id: note.id,
+               title: note.title,
+               text: note.text,
+               created: note.created,
+               createdFormated: format(new Date(note.created), 'dd/MM/yyyy'),
+            }));
 
-         setNotes(list);
-      })
-      .catch((err) => {
-         console.log(err);
-      })
-
-      setLoading(false);
+            setNotes(list);
+            setLoading(false);
+         }
+      );
    }
 
 
    async function handleAddNote(e) {
       e.preventDefault();
 
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('notes')
-      .add({
-         title: title.trim(),
-         text: text.trim(),
-         created: new Date(),
-      })
-      .then(() => {
-         toast('Anotação criada.', {
-            position: "bottom-right",
-            autoClose: 1500,
-            hideProgressBar: true,
-            pauseOnHover: true,
-            className: 'toast-success',
-         });
-      })
-      .catch((err) => {
-         console.log(err);
-      })
+      connection.query(
+         'INSERT INTO anotacao (Usuario_idUsuario, Titulo, Descricao, DataCriacao) VALUES (?, ?, ?, ?)',
+         [user.uid, title.trim(), text.trim(), new Date()],
+         (err) => {
+            if (err) {
+               console.error('Erro ao adicionar anotação:', err);
+               return;
+            }
 
-      setModalNote(false);
-      setTitle('');
-      setText('');
+            toast('Anotação criada.', {
+               position: "bottom-right",
+               autoClose: 1500,
+               hideProgressBar: true,
+               pauseOnHover: true,
+               className: 'toast-success',
+            });
 
-      loadNotes();
-	}
+            setModalNote(false);
+            setTitle('');
+            setText('');
+            loadNotes();
+         }
+      );
+   }
 
 
    async function handleDeleteNote(id) {
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('notes').doc(id)
-      .delete()
-      .then(() => {
-         toast('Anotação excluída.', {
-            position: "bottom-right",
-            autoClose: 1500,
-            hideProgressBar: true,
-            pauseOnHover: true,
-            className: 'toast-fail',
-         });
-      })
-      .catch((err) => {
-         console.log(err);
-      })
+      connection.query(
+         'DELETE FROM anotacao WHERE id = ? AND Usuario_idUsuario = ?',
+         [id, user.uid],
+         (err) => {
+            if (err) {
+               console.error('Erro ao excluir anotação:', err);
+               return;
+            }
 
-      loadNotes();
-	}
+            toast('Anotação excluída.', {
+               position: "bottom-right",
+               autoClose: 1500,
+               hideProgressBar: true,
+               pauseOnHover: true,
+               className: 'toast-fail',
+            });
+
+            loadNotes();
+         }
+      );
+   }
 
 
    async function handleAddEditNote(e) {
       e.preventDefault();
 
-      await firebase.firestore().collection('users')
-      .doc(user.uid).collection('notes').doc(thisNote.id)
-      .update({
-         title: title.trim(),
-         text: text.trim()
-      })
-      .then(() => {
-         toast('Anotação editada.', {
-            position: "bottom-right",
-            autoClose: 1500,
-            hideProgressBar: true,
-            pauseOnHover: true,
-            className: 'toast-edit',
-         });
-      })
-      .catch((err) => {
-         console.log(err)
-      })
+      connection.query(
+         'UPDATE anotacao SET Titulo = ?, Descricao = ? WHERE IdAnotacao = ? AND Usuario_idUsuario = ?',
+         [title.trim(), text.trim(), thisNote.id, user.uid],
+         (err) => {
+            if (err) {
+               console.error('Erro ao editar anotação:', err);
+               return;
+            }
 
-      setModalEditNote(false);
-      loadNotes();
+            toast('Anotação editada.', {
+               position: "bottom-right",
+               autoClose: 1500,
+               hideProgressBar: true,
+               pauseOnHover: true,
+               className: 'toast-edit',
+            });
 
+            setModalEditNote(false);
+            loadNotes();
+         }
+      );
    }
-
 
    function handleToggleModalNote(e) {
       e.preventDefault();
