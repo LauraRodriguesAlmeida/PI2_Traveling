@@ -1,16 +1,11 @@
-import mysql from 'mysql';
-import dotenv from 'dotenv';
+const mysql = require('mysql2');
 
-dotenv.config();
-
-const dbConfig = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE
-};
-
-const connection = mysql.createConnection(dbConfig);
+const connection = mysql.createConnection({
+  host: 'localhost',
+  user:'root',
+  password: 'SpBD2022!',
+  database: 'pi2'
+});
 
 connection.connect((err) => {
   if (err) {
@@ -20,4 +15,4 @@ connection.connect((err) => {
   console.log('Conectado ao MySQL com sucesso!');
 });
 
-export default connection;
+module.exports = connection;
